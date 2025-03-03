@@ -41,7 +41,7 @@ This project uses **Statistical Machine Learning (SML)** to tackle two different
     *   **Decision Trees need to be pruned:** Decision Trees need to be simplified (cp = 0.05 or 0.1) to avoid being too specific to the training data.
     *   **Recognizing "1" and "7" is easy:** We were able to classify the digits "1" and "7" with very high accuracy.
 
-## Watch the Video!
+## Watch the Video
 
 You can see a presentation of the project here
 
