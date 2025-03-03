@@ -9,7 +9,7 @@ This project applies **Statistical Machine Learning (SML)** techniques to two di
 - `jeandedieu_ngirinshuti_SML2.pdf` → Full project report 
 - `jeandedieu_ngirinshuti_SML2.Rmd` → R Markdown script for data analysis and modeling
 
-## 🧬 Part 1: Cancer Classification (High-Dimensional Data)
+## Part 1: Cancer Classification (High-Dimensional Data)
 - Dataset: **79 samples, 501 features (DNA Gene Expressions)**  
 - **Key Techniques Used**
   - **Feature Selection** using Kruskal-Wallis test  
@@ -36,7 +36,7 @@ This project applies **Statistical Machine Learning (SML)** techniques to two di
   - **Decision Trees require pruning (cp = 0.05 or 0.1) to avoid overfitting**
   - **Binary classification of digits "1" and "7" achieved high accuracy**
 
-## 🎥 Video Presentation
+## Video Presentation
 Watch the full project presentation here  
 🔗 **[YouTube Video](https://youtu.be/5vDRaiMnfyw)**  
 
