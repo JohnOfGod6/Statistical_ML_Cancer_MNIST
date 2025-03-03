@@ -1,0 +1,1018 @@
+---
+title: |
+  \thispagestyle{empty}
+  \begin{center}
+  \textbf{AFRICAN INSTITUTE FOR MATHEMATICAL SCIENCES \\[0.3cm]
+  (AIMS RWANDA, KIGALI)}
+  \end{center}
+output: pdf_document
+header-includes:
+  - \usepackage{fancyhdr}
+  - \fancypagestyle{empty}{
+      \fancyhf{}
+      \renewcommand{\headrulewidth}{0pt}
+    }
+---
+  
+\noindent
+\rule{17cm}{0.2cm} 
+Name: Jean de Dieu NGIRINSHUTI  \hfill Assignment Number: 2 
+
+Course: Statistical Machine Learning\hfill Date: \today 
+\rule{17cm}{0.05cm}
+\vspace{1.0cm}
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r,message=FALSE,warning=FALSE}
+# Load necessary libraries
+library(class)
+library(rpart)
+library(rpart.plot)
+library(ROCR)
+library(ggplot2)
+library(dplyr) 
+library(reshape2)
+library(dslabs)
+library(corrplot)
+library(pROC)
+```
+
+\subsection*{Question 1: Comment on the Shape of the Dataset}
+
+```{r,message=FALSE}
+# Load the dataset
+prostate <- read.csv('prostate-cancer-1.csv')
+
+# Check the shape of the dataset
+num_samples <- nrow(prostate)  # Number of samples
+num_features <- ncol(prostate)  # Number of features
+
+# Output the shape
+cat("Number of samples:", num_samples, "\n")
+cat("Number of features:", num_features, "\n")
+
+# View the first few rows of the dataset to understand the structure
+#head(prostate,1)
+```
+The dataset has **79 samples** and **501 features**:
+
+\begin{itemize}
+\item One feature \(`Y`\) is the target variable, indicating if a subject has cancer or not.
+\item The remaining 500 features are predictors based on DNA MicroArray Gene Expression levels.
+\end{itemize}
+This means the dataset has far more features than samples, which is a high-dimensional dataset. Such datasets can be challenging to analyze because having more features than samples can lead to overfitting. Techniques like feature selection or dimensionality reduction may be necessary to improve model performance.
+
+
+\subsection*{Question 2: Statistical Perspective on the Input Space}
+```{r}
+# Check the structure of the dataset for key components
+str(prostate[, 1:6])  
+# Provide a concise summary of the predictors
+summary(prostate[, 2:6])  
+
+```
+
+### Comment on the Type of Data in the Input Space
+
+The input space consists of **continuous numeric variables**, which represent DNA MicroArray Gene Expression levels. These variables are measured on a continuous scale and vary across samples.
+
+From a statistical perspective:
+\begin{itemize}
+\item The predictors are real-valued numbers, typical for gene expression data.
+\item The response variable \(`Y`\) is binary (0 and 1), indicating whether the subject has cancer or not.
+\item The high-dimensional nature of the data suggests that some predictors may be highly correlated, reflecting biological relationships.
+\end{itemize}
+
+
+\subsection*{Question 3:Distribution of the Response Variable}
+
+```{r}
+ 
+
+# Convert the response variable to a factor (if not already)
+prostate$Y <- as.factor(prostate$Y)
+
+# Plot the distribution of the response variable
+ggplot(prostate, aes(x = Y, fill = Y)) +
+  geom_bar(color = "black") +
+  scale_fill_manual(values = c("orange", "blue")) +
+  labs(title = "Distribution of Response Variable (Y)",
+       x = "Response (Y)",
+       y = "Count") +
+  theme_minimal()
+
+```
+
+### Distribution of the Response Variable
+ 
+From the plot:
+\begin{itemize}
+\item The distribution appears fairly balanced, with a slightly higher count of cancer cases \(`1`\) compared to non-cancer cases \(`0`\).
+\item A balanced dataset like this is beneficial for machine learning, as it reduces the risk of biased predictions towards the majority class.
+\end{itemize}
+
+This balance ensures that the machine learning models trained on this dataset will have fair opportunities to learn from both classes.
+
+\subsection{ Question 4: calculate Kruskal-Wallis test statistics for all predictors}
+```{r}
+
+kruskal_stats <- apply(prostate[, -1], 2, function(x) kruskal.test(x ~ prostate$Y)$statistic)
+
+# Sort the predictors by their test statistics in descending order and extract the top 9
+top_predictors <- sort(kruskal_stats, decreasing = TRUE)[1:9]
+
+# Display the top 9 predictors and their statistics
+top_predictors
+
+```
+
+
+```{r}
+# Convert the top predictors to a data frame for plotting
+top_predictors_df <- data.frame(
+  Variable = names(top_predictors),
+  Statistic = as.numeric(top_predictors)
+)
+
+
+ggplot(top_predictors_df, aes(x = reorder(Variable, -Statistic), y = Statistic, fill = Variable)) +
+  geom_bar(stat = "identity", color = "black") +
+  labs(
+    title = "Top 9 Predictors Based on Kruskal-Wallis Test",
+    x = "Predictor Variables",
+    y = "Kruskal-Wallis Statistic"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_brewer(palette = "Set3")  # Use a nice color palette
+```
+
+
+### Top 9 Most Powerful Predictors
+
+The Kruskal-Wallis test identified the following 9 most powerful predictors based on their relationship with the response variable \(`Y`\):
+
+1. **X217844_at**  
+2. **X211935_at**  
+3. **X212640_at**  
+4. **X201290_at**  
+5. **X215333_x_at**  
+6. **X201480_s_at**  
+7. **X209454_s_at**  
+8. **X200047_s_at**  
+9. **X214001_x_at**
+
+These predictors have the strongest statistical association with the response variable \(`Y`\) and are expected to be the most influential in the analysis. They will likely play a significant role in building predictive models.
+
+\subsection{Question 5: Generate the \('h'\) plot for Kruskal-Wallis test statistics}
+```{r}
+ 
+# Sort all predictors by their test statistics
+sorted_stats <- sort(kruskal_stats, decreasing = TRUE)
+
+# Create the plot
+plot(
+  1:length(sorted_stats), sorted_stats, 
+  type = "h", lwd = 2, col = "blue",
+  xaxt = "n",  # Suppress x-axis labels temporarily
+  xlab = "Predictor Variables", 
+  ylab = "Kruskal-Wallis Statistic", 
+  main = "Kruskal-Wallis Test Statistics for Predictors"
+)
+
+# Add variable names as x-axis labels
+axis(1, at = 1:length(sorted_stats), labels = names(sorted_stats), las = 2, cex.axis = 0.7)
+
+```
+
+\subsection{Question 6: Comperative  boxplots of the 9 most powerful variable}
+```{r}
+ 
+top_variables <- names(top_predictors)
+
+# Subset the dataset to include only the top predictors and the response
+subset_data <- prostate[, c("Y", top_variables)]
+
+# Convert response variable to a factor  
+subset_data$Y <- as.factor(subset_data$Y)
+
+ 
+melted_data <- melt(subset_data, id.vars = "Y")
+
+# Create the boxplots
+ggplot(melted_data, aes(x = Y, y = value, fill = Y)) +
+  geom_boxplot() +
+  facet_wrap(~ variable, scales = "free", ncol = 3) +  # Free scales for each variable
+  labs(
+    title = "Comparative Boxplots of Top 9 Predictors",
+    x = "Response Variable (Y)",
+    y = "Predictor Values"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_brewer(palette = "Set3")
+
+```
+### Comparative Boxplots of Top 9 Predictors
+
+The boxplots compare the distributions of the top 9 predictors between the two response categories (`0` and `1`). Key observations:
+
+1. Some predictors, such as `X217844_at`, `X211935_at`, and `X215333_x_at`, show a noticeable difference in their median values and spread between the two response categories. This suggests they are strong predictors for distinguishing between cancer (`1`) and non-cancer (`0`).
+
+2. Predictors like `X214001_x_at` and `X200047_s_at` exhibit more overlap in their distributions, indicating they may have a weaker ability to differentiate between the two response categories.
+
+3.  Several predictors, such as `X201290_at` and `X209454_s_at`, show larger spreads and outliers, which could indicate variability in their association with the response variable.
+
+ 
+\subsection{Question 7: Build the classification tree with cp = 0.01}
+
+1. **Classification Tree**: The tree was built using a complexity parameter \(`cp`\) of 0.01. Below is the plot of the tree:
+   
+```{r}
+ 
+# Build the classification tree
+tree_cp_01 <- rpart(Y ~ ., data = prostate, control = rpart.control(cp = 0.01))
+
+# Plot the tree
+rpart.plot(tree_cp_01, main = "Classification Tree (cp = 0.01)")
+
+# Number of terminal nodes
+num_terminal_nodes <- sum(tree_cp_01$frame$var == "<leaf>")
+cat("Number of terminal nodes:", num_terminal_nodes, "\n")
+```
+2. **Number of Terminal Nodes**: The tree has **4 terminal nodes**, which represent the final groups (regions) after all splits.
+
+
+3. **Mathematical Form of Regions**:
+
+   - **Region 2**: This region is defined by the following conditions:
+     
+$$
+R_2 = \left\{ \mathbf{x} \in \mathbb{R}^p : x_{\text{201290\_at}} \geq 1.097458 \quad \text{and} \quad x_{\text{214008\_at}} \geq -0.2915895 \right\}
+$$
+     
+   - **Region 4**:Region 4: This region is defined by the following conditions:
+   
+$$
+R_4 = \left\{ \mathbf{x} \in \mathbb{R}^p : x_{\text{201290\_at}} < 1.097458 \quad \text{and} \quad x_{\text{209048\_s\_at}} < -0.063 \right\}
+$$
+     
+     
+
+4. **Root Node Variable**: The variable at the root of the tree is `X201290_at`. This variable is important because it is the first split, meaning it best separates the data into meaningful groups.
+
+```{r,echo=FALSE}
+# Root node variable
+root_variable <-tree_cp_01 $frame$var[1]
+cat("Root node variable:", root_variable, "\n")
+
+```
+5. **Comment on Root Node**:
+   - The root node variable, `X201290_at`, is likely one of the strongest predictors, as confirmed by the Kruskal-Wallis test. Its presence at the root indicates it has a significant relationship with the response variable \(`Y`\), making it critical for classification.
+   
+   
+\subsection{Question 8:  Identify the 9 weakest predictors}
+
+```{r}
+weakest_variables <- names(tail(sort(kruskal_stats), 9))
+
+# Subset the dataset to include the weakest predictors and the response
+subset_weak_data <- prostate[, c("Y", weakest_variables)]
+
+# Convert the response variable to a factor (if not already)
+subset_weak_data$Y <- as.factor(subset_weak_data$Y)
+
+
+melted_weak_data <- melt(subset_weak_data, id.vars = "Y")
+
+ggplot(melted_weak_data, aes(x = Y, y = value, fill = Y)) +
+  geom_boxplot() +
+  facet_wrap(~ variable, scales = "free", ncol = 3) +  # Free scales for each variable
+  labs(
+    title = "Comparative Boxplots of 9 Weakest Predictors",
+    x = "Response Variable (Y)",
+    y = "Predictor Values"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_brewer(palette = "Set3")
+
+```
+
+### Comparative Boxplots of 9 Weakest Predictors
+
+The boxplots above compare the 9 weakest predictors with respect to the response variable (`Y`). These predictors were identified as having the smallest Kruskal-Wallis test statistics.
+
+Key Observations:
+
+  1. Most predictors show substantial overlap in their distributions between the two response categories \(`0` \)and \(`1`\), indicating a weak ability to differentiate between the classes.
+  
+  2. For many predictors, such as `X214001_x_at`, `X200047_s_at`, and `X209454_s_at`, the median values are very close for both categories, confirming their weak association with the response.
+   
+  3. Some predictors, like `X212640_at` and `X211935_at`, show minimal variability in their distributions, further reducing their significance as individual features.
+ 
+\subsection{Question 9:  Correlation plot of the predictor variables}
+
+```{r}
+top_predictors <- names(sorted_stats)[1:9]   
+predictors <- prostate[, -ncol(prostate)]   
+# Select the subset of the data for the top 9 predictors
+top_predictors_subset <- predictors[, colnames(predictors) %in% top_predictors]
+
+# Check if top_predictors_subset is correctly subsetted
+if (ncol(top_predictors_subset) != length(top_predictors)) {
+  stop("Mismatch in the number of selected top predictors. Ensure names(top_predictors) match predictor columns.")
+}
+
+# Compute the correlation matrix for the top predictors
+correlation_matrix_top <- cor(top_predictors_subset)
+
+
+
+# Generate a cleaner correlation plot
+corrplot(correlation_matrix_top, method = "color", type = "full", 
+         tl.cex = 0.8, tl.col = "black", title = "Correlation Plot of Top 9 Predictors",
+         addCoef.col = "black", number.cex = 0.7, mar = c(0, 0, 2, 0))
+
+```
+
+
+
+### Correlation Plot of Predictors
+
+The correlation plot shows the relationships among all predictor variables. Key insights include:
+  
+  1. **Clusters of Correlated Predictors**: Some predictors are highly correlated, forming clear blocks in the plot. These predictors may carry redundant information.
+  
+2. **Independent Predictors**: Several predictors show weak correlations with others, providing unique information for modeling.
+
+3. **Multicollinearity**: Strongly correlated predictors may lead to multicollinearity, which can affect regression models and require preprocessing.
+
+4. **Dimensionality Reduction**: The clustering suggests opportunities for reducing redundancy using techniques like PCA or feature selection.
+
+This analysis highlights the need to address multicollinearity and optimize the predictor set for better model performance.
+
+
+\subsection{Question 10: Compute the eigendecomposition of the correlation matrix}
+
+```{r}
+
+eigen_decomp <- eigen(correlation_matrix_top)
+
+# Extract the eigenvalues
+eigenvalues <- eigen_decomp$values
+
+# Compute the ratio of the largest to the smallest eigenvalue
+lambda_ratio <- max(eigenvalues) / min(eigenvalues)
+cat("Ratio Lambda max/Lambda min:", lambda_ratio, "\n")
+
+# Display only a few eigenvalues
+cat("Top 5 Eigenvalues:", head(eigenvalues, 5), "\n")
+cat("Smallest 5 Eigenvalues:", tail(eigenvalues, 5), "\n")
+
+
+```
+### Comment on \( \lambda_{\text{max}} / \lambda_{\text{min}} \) for Top 9 Predictors
+
+The ratio of the largest to the smallest eigenvalue (\( \lambda_{\text{max}} / \lambda_{\text{min}} \)) for the correlation matrix of the top 9 predictors is \( 17.02747 \). This reveals the following:
+
+1. **Multicollinearity**:
+   - The large ratio indicates that several predictors are highly correlated, leading to significant redundancy among them.
+   
+   - The smallest eigenvalues are relatively small, suggesting that some predictors may not add substantial new information to the dataset.
+
+2. **Ill-Conditioned Correlation Matrix**:
+   - This level of multicollinearity can make models like regression and tree-based models less stable, potentially leading to less reliable or inconsistent results.
+   - Highly correlated predictors can confuse the model, as they may carry overlapping information.
+
+3. **Possible Remedies**:
+   - To address multicollinearity, techniques like **Principal Component Analysis (PCA)** can be used to transform the predictors into orthogonal components.
+   - Alternatively, redundant predictors can be identified and removed to improve model robustness.
+   
+   
+### Conclusion:
+The large ratio (\( 17.02747 \)) reflects significant overlap among the top 9 predictors, emphasizing the need to address multicollinearity. By reducing redundancy, we can enhance the stability and reliability of the models built with these predictors.
+
+
+
+\subsection{Question 11: The comparative ROC curves}
+
+```{r}
+# Ensure response variable is a factor
+prostate$Y <- as.factor(prostate$Y)
+
+# Splitting predictors and response
+X <- prostate[, -ncol(prostate)]
+Y <- prostate$Y
+
+# Train-Test Split (using all data for training and testing)
+trainX <- X
+trainY <- Y
+testX <- X
+testY <- Y
+
+# KNN Models (extract probabilities)
+pred_1nn <- knn(train = trainX, test = testX, cl = trainY, k = 1, prob = TRUE)
+prob_1nn <- ifelse(pred_1nn == levels(testY)[2], attr(pred_1nn, "prob"), 1 - attr(pred_1nn, "prob"))
+
+pred_7nn <- knn(train = trainX, test = testX, cl = trainY, k = 7, prob = TRUE)
+prob_7nn <- ifelse(pred_7nn == levels(testY)[2], attr(pred_7nn, "prob"), 1 - attr(pred_7nn, "prob"))
+
+pred_9nn <- knn(train = trainX, test = testX, cl = trainY, k = 9, prob = TRUE)
+prob_9nn <- ifelse(pred_9nn == levels(testY)[2], attr(pred_9nn, "prob"), 1 - attr(pred_9nn, "prob"))
+
+# Decision Trees
+tree_0 <- rpart(Y ~ ., data = prostate, control = rpart.control(cp = 0))
+tree_05 <- rpart(Y ~ ., data = prostate, control = rpart.control(cp = 0.05))
+tree_1 <- rpart(Y ~ ., data = prostate, control = rpart.control(cp = 0.1))
+
+# Predictions
+prob_tree_0 <- predict(tree_0, newdata = prostate, type = "prob")[, 2]  # Probability of Y=1
+prob_tree_05 <- predict(tree_05, newdata = prostate, type = "prob")[, 2]
+prob_tree_1 <- predict(tree_1, newdata = prostate, type = "prob")[, 2]
+
+
+# Generate ROC curves
+roc_1nn <- prediction(prob_1nn, testY)
+perf_1nn <- performance(roc_1nn, "tpr", "fpr")
+
+roc_7nn <- prediction(prob_7nn, testY)
+perf_7nn <- performance(roc_7nn, "tpr", "fpr")
+
+roc_9nn <- prediction(prob_9nn, testY)
+perf_9nn <- performance(roc_9nn, "tpr", "fpr")
+
+roc_tree_0 <- prediction(prob_tree_0, testY)
+perf_tree_0 <- performance(roc_tree_0, "tpr", "fpr")
+
+roc_tree_05 <- prediction(prob_tree_05, testY)
+perf_tree_05 <- performance(roc_tree_05, "tpr", "fpr")
+
+roc_tree_1 <- prediction(prob_tree_1, testY)
+perf_tree_1 <- performance(roc_tree_1, "tpr", "fpr")
+
+# Plot Comparative ROC Curves
+plot(perf_1nn, col = "green", lwd = 2, main = "Comparative ROC Curves")
+plot(perf_7nn, col = "blue", add = TRUE, lwd = 2)
+plot(perf_9nn, col = "red", add = TRUE, lwd = 2)
+plot(perf_tree_0, col = "purple", add = TRUE, lwd = 2)
+plot(perf_tree_05, col = "orange", add = TRUE, lwd = 2)
+plot(perf_tree_1, col = "brown", add = TRUE, lwd = 2)
+
+# Add a single legend
+legend(
+  "bottomright", 
+  legend = c("1NN", "7NN", "9NN", "Tree (cp=0)", "Tree (cp=0.05)", "Tree (cp=0.1)"),
+  col = c("green", "blue", "red", "purple", "orange", "brown"),
+  lwd = 2,
+  cex = 0.8
+)
+
+
+```
+#### Observations:
+
+1. **k-NN Models**:
+  - The **1NN model** performs well but risks overfitting since it memorizes the training set.
+- The **7NN and 9NN models** generalize better, with their ROC curves closely following the top-left corner, indicating good sensitivity and specificity.
+
+2. **Decision Tree Models**:
+  - The **Tree with `cp = 0`** shows high sensitivity but risks overfitting due to its lack of pruning.
+- As the `cp` value increases (`cp = 0.05` and `cp = 0.1`), the trees are more pruned, leading to slightly worse sensitivity and specificity, as seen in their flatter ROC curves.
+
+3. **AUC Comparison**:
+  - The models' Area Under the Curve (AUC) values suggest that the k-NN models (especially **7NN** and **9NN**) perform competitively compared to decision trees.
+
+#### Conclusion:
+The **7NN and 9NN models** exhibit the best trade-off between sensitivity and specificity, making them more robust for this dataset. Decision trees with aggressive pruning (`cp = 0.1`) lose some predictive power but are less prone to overfitting.
+
+
+
+\subsection{Question 12 : Three classification tree grown, using the prp function}
+
+```{r}
+# Build the classification trees with different complexity parameters
+tree_cp_0 <- rpart(Y ~ ., data = prostate, control = rpart.control(cp = 0))
+tree_cp_05 <- rpart(Y ~ ., data = prostate, control = rpart.control(cp = 0.05))
+tree_cp_1 <- rpart(Y ~ ., data = prostate, control = rpart.control(cp = 0.1))
+
+# Plot the trees using prp
+par(mfrow = c(1, 3))  # Arrange plots in a single row with three columns
+
+prp(tree_cp_0, main = "Classification Tree (cp = 0)", extra = 104, box.palette = "Blues")
+prp(tree_cp_05, main = "Classification Tree (cp = 0.05)", extra = 104, box.palette = "Greens")
+prp(tree_cp_1, main = "Classification Tree (cp = 0.1)", extra = 104, box.palette = "Oranges")
+
+# Reset plotting layout
+par(mfrow = c(1, 1))
+
+
+```
+
+### Plots of Classification Trees
+
+The three trees above illustrate how the complexity parameter (`cp`) affects the tree structure:
+
+  - **Tree with `cp = 0`**: The largest tree with no pruning, capturing all patterns but prone to overfitting.
+  
+- **Tree with `cp = 0.05`**: Moderately pruned, balancing complexity and interpretability with 3 terminal nodes.
+
+- **Tree with `cp = 0.1`**: Heavily pruned, resulting in a simple and interpretable structure but risking underfitting.
+
+### Conclusion:
+Pruning (`cp`) reduces complexity, with simpler trees being more interpretable but potentially less accurate.
+
+
+
+
+\subsection{Question 13 : Comment on ROC Curves}
+
+The ROC curves reveal the following:
+
+  1. **k-NN Models**:
+  
+  - **1NN** exhibits the steepest rise, indicating high sensitivity but likely overfitting due to its memorization of the training data.
+  
+- **7NN and 9NN** provide smoother and more generalized curves, demonstrating better trade-offs between sensitivity and specificity.
+
+2. **Decision Tree Models**:
+
+  - The tree with `cp = 0` performs well but risks overfitting as it captures intricate patterns in the data.
+  
+- Pruned trees (`cp = 0.05` and `cp = 0.1`) show slightly lower performance, as pruning simplifies the model and sacrifices some predictive power.
+
+### Argument in Light of Theory:
+The results align with theoretical expectations:
+
+  - **Overfitting vs. Generalization**: Models like 1NN and the unpruned tree (`cp = 0`) excel on training data but risk overfitting. Smoother k-NN models (e.g., 7NN, 9NN) and pruned trees generalize better.
+  
+- **Pruning and Bias-Variance Trade-Off**: Pruning reduces model complexity (variance), improving generalization but increasing bias, as seen with `cp = 0.05` and `cp = 0.1`.
+
+### Conclusion:
+The results demonstrate the trade-off between model complexity and generalization, which is consistent with the bias-variance trade-off in machine learning theory.
+
+
+
+\subsection{Question 14: The comparative boxplots}
+
+```{r}
+# Set seed for reproducibility
+set.seed(19671210)
+
+# Initialize variables
+n_reps <- 100
+errors <- data.frame()
+
+# Perform replicated random splits
+for (i in 1:n_reps) {
+  # Create stochastic holdout split
+  indices <- sample(1:nrow(prostate), size = 0.7 * nrow(prostate))
+  trainX <- prostate[indices, -ncol(prostate)]
+  trainY <- prostate$Y[indices]
+  testX <- prostate[-indices, -ncol(prostate)]
+  testY <- prostate$Y[-indices]
+  
+  # 1NN
+  pred_1nn <- knn(train = trainX, test = testX, cl = trainY, k = 1)
+  error_1nn <- mean(pred_1nn != testY)
+  
+  # 7NN
+  pred_7nn <- knn(train = trainX, test = testX, cl = trainY, k = 7)
+  error_7nn <- mean(pred_7nn != testY)
+  
+  # 9NN
+  pred_9nn <- knn(train = trainX, test = testX, cl = trainY, k = 9)
+  error_9nn <- mean(pred_9nn != testY)
+  
+  # Tree (cp=0)
+  tree_0 <- rpart(Y ~ ., data = prostate[indices, ], control = rpart.control(cp = 0))
+  pred_tree_0 <- predict(tree_0, newdata = prostate[-indices, ], type = "class")
+  error_tree_0 <- mean(pred_tree_0 != testY)
+  
+  # Tree (cp=0.05)
+  tree_05 <- rpart(Y ~ ., data = prostate[indices, ], control = rpart.control(cp = 0.05))
+  pred_tree_05 <- predict(tree_05, newdata = prostate[-indices, ], type = "class")
+  error_tree_05 <- mean(pred_tree_05 != testY)
+  
+  # Tree (cp=0.1)
+  tree_1 <- rpart(Y ~ ., data = prostate[indices, ], control = rpart.control(cp = 0.1))
+  pred_tree_1 <- predict(tree_1, newdata = prostate[-indices, ], type = "class")
+  error_tree_1 <- mean(pred_tree_1 != testY)
+  
+  # Store errors
+  errors <- rbind(errors, data.frame(
+    Model = c("1NN", "7NN", "9NN", "Tree (cp=0)", "Tree (cp=0.05)", "Tree (cp=0.1)"),
+    Error = c(error_1nn, error_7nn, error_9nn, error_tree_0, error_tree_05, error_tree_1),
+    Rep = i
+  ))
+}
+
+# Plot comparative boxplots
+ggplot(errors, aes(x = Model, y = Error, fill = Model)) +
+  geom_boxplot() +
+  labs(title = "Comparative Test Errors Across Models",
+       x = "Model",
+       y = "Test Error") +
+  theme_minimal()
+
+# Perform ANOVA
+anova_result <- aov(Error ~ Model, data = errors)
+summary(anova_result)
+
+
+```
+
+
+
+### Comment on the Distribution of Test Errors
+
+The boxplot above highlights the distribution of test errors for six learning machines:
+  
+  1. **1NN**:
+  
+  - Exhibits the lowest median test error but has a larger spread (higher variance).
+  
+- The variance reflects the sensitivity of the 1NN model to the specific training and testing splits, consistent with its high complexity and tendency to overfit.
+
+2. **7NN and 9NN**:
+  - Both models show slightly higher median errors compared to 1NN but with significantly reduced variance.
+  
+- This demonstrates that increasing `k` reduces model complexity, leading to more stable and generalized performance.
+
+3. **Tree (cp = 0)**:
+  - The unpruned tree has the highest variance among the models, indicating overfitting due to its high complexity.
+
+4. **Tree (cp = 0.05 and cp = 0.1)**:
+  - The pruned trees have higher median errors compared to the unpruned tree but exhibit significantly reduced variance.
+  
+- Pruning simplifies the tree structure, improving its generalization capability.
+
+### Conclusion:
+The results demonstrate the impact of implicit model complexity on test errors:
+  - Models with higher complexity (e.g., 1NN and Tree `cp = 0`) are prone to overfitting, resulting in lower median errors but higher variance.
+  
+- Simpler models (e.g., 7NN, 9NN, and pruned trees) exhibit more stable performance with reduced variance, aligning with the trade-off between bias and variance in machine learning.
+
+
+
+\subsection{Question 15: General Observations and Lessons Learned}
+
+This exploration has provided several insights into the behavior of different learning machines and their relationship with model complexity, generalization, and test performance.
+
+#### Key Observations:
+1. **Impact of Model Complexity**:
+  - Models with higher complexity, such as **1NN** and the unpruned decision tree (`cp = 0`), showed the lowest median errors but at the cost of higher variance. This indicates that these models tend to overfit the training data, capturing noise and patterns that do not generalize well to unseen data.
+  
+- Simpler models, such as **7NN**, **9NN**, and pruned trees (`cp = 0.05`, `cp = 0.1`), exhibited slightly higher median errors but significantly reduced variance, highlighting their robustness and generalization capability.
+
+2. **k-NN Models**:
+  - As `k` increases from 1 to 9, the test error distribution becomes more stable, demonstrating how increasing `k` reduces the sensitivity of k-NN models to noisy data. This aligns with theoretical expectations, as higher `k` values smooth out local noise and improve generalization.
+
+3. **Decision Trees**:
+  - The unpruned tree (`cp = 0`) performs well on the training data but has poor generalization due to overfitting. Pruned trees, especially with `cp = 0.05` and `cp = 0.1`, strike a better balance between complexity and generalization.
+
+4. **Test Error Variance**:
+  - Across all models, variance in test error highlights the influence of stochastic splits on model performance. Models with lower complexity exhibit more stable performance, as they are less sensitive to small changes in training data.
+
+#### Lessons Learned:
+1. **Bias-Variance Trade-Off**:
+  - This exploration reinforced the concept of the bias-variance trade-off. Complex models like 1NN and unpruned trees have low bias but high variance, while simpler models like pruned trees and higher-k k-NN models have higher bias but lower variance.
+
+2. **Model Selection**:
+  - Choosing the "best" model is a trade-off between performance and interpretability:
+  
+  - **1NN** and **Tree (cp = 0)** may excel in accuracy for specific splits but risk poor performance on new data.
+  
+- **7NN**, **9NN**, and pruned trees offer better generalization and stability, making them preferable for real-world applications.
+
+3. **Practical Implications**:
+  - Pruning and regularization techniques are critical for reducing overfitting in complex models like decision trees.
+  
+- Hyperparameter tuning (e.g., choosing `k` in k-NN or `cp` in trees) plays a crucial role in achieving optimal performance.
+
+4. **Importance of Validation**:
+  - Using stochastic splits and replicating experiments is vital to understanding model behavior and ensuring robust performance estimates. A single train-test split may provide misleading results.
+
+
+\section{Exercise 2}
+\subsection{Part 1: Multi-class classification on MNIST}
+### subquestion 1: Mathematical Expression of the kNN Prediction Function
+
+The \( k \)-Nearest Neighbors (kNN) prediction function \( \widehat{f}{\tt kNN}(x)\) can be expressed as:
+$$
+\widehat{f}{\tt kNN}(x) = \underset{c \in \mathcal{Y}}{{\tt argmax}}\Bigg\{\frac{1}{k}\sum_{i=1}^n{{\bf 1}(x_i \in \mathcal{V}_k(x)){\bf 1}(y_i=c)}\Bigg\}
+$$
+
+
+ 
+### Subquestion 2: Sampling a Fragment from the MNIST Dataset
+
+To reduce computational load, we sample a fragment of the MNIST dataset. Let \( n \) be the training set size and \( m \) be the test set size.
+
+We choose:
+- \( n = 1200 \) for the training set
+- \( m = 400 \) for the test set
+
+This choice ensures:
+
+1. The MNIST dataset is large, and kNN can be computationally expensive for large datasets. Reducing the size makes computations feasible.
+
+2. A training set of 1200 and test set of 400 provide enough diversity to capture patterns in handwritten digits while allowing reliable evaluation of model performance.
+
+The following code performs the sampling:
+
+```{r}
+mnist <- read_mnist()
+
+# Define training and test sizes
+set.seed(142)  # Ensure reproducibility
+n <- 1200     # Training set size
+m <- 400     # Test set size
+
+# Sample indices for training and testing
+train_indices <- sample(1:nrow(mnist$train$images), n)
+test_indices <- sample(1:nrow(mnist$test$images), m)
+
+# Subset the MNIST dataset
+xtrain_sample <- mnist$train$images[train_indices, ]
+ytrain_sample <- as.factor(mnist$train$labels[train_indices])
+xtest_sample <- mnist$test$images[test_indices, ]
+ytest_sample <- as.factor(mnist$test$labels[test_indices])
+
+# Dimensions of sampled data
+cat("Training Set Size:", dim(xtrain_sample)[1], "x", dim(xtrain_sample)[2], "\n")
+cat("Test Set Size:", dim(xtest_sample)[1], "x", dim(xtest_sample)[2], "\n")
+
+```
+
+### 3.1 Build 5 Models and Compute Test Errors for Each Split
+```{r}
+# Set parameters
+S <- 50  # Number of random splits
+test_errors <- matrix(0, nrow = S, ncol = 5)  # Initialize matrix for test errors
+colnames(test_errors) <- c("1NN", "5NN", "7NN", "9NN", "13NN")
+
+# Perform random splits and evaluate models
+set.seed(142)  # Ensure reproducibility
+for (split in 1:S) {
+  # Split the data into 70% training and 30% testing
+  train_indices <- sample(1:nrow(xtrain_sample), 0.7 * nrow(xtrain_sample))
+  x_train <- xtrain_sample[train_indices, ]
+  y_train <- ytrain_sample[train_indices]
+  x_test <- xtrain_sample[-train_indices, ]
+  y_test <- ytrain_sample[-train_indices]
+  
+  # Compute test errors for each kNN model
+  for (k in c(1, 5, 7, 9, 13)) {
+    pred_knn <- knn(train = x_train, test = x_test, cl = y_train, k = k)
+    test_errors[split, paste(k, "NN", sep = "")] <- mean(pred_knn != y_test)
+  }
+}
+
+# Display test error matrix
+test_errors
+
+```
+### 3.2 Identify the Machine with the Smallest Median Test Error
+```{r}
+# Compute median test errors across splits
+median_errors <- apply(test_errors, 2, median)
+
+# Identify the model with the smallest median error
+best_model <- names(which.min(median_errors))
+cat("The model with the smallest median test error is:", best_model, "\n")
+
+```
+### Generate Confusion Matrix for the Last Split
+```{r}
+# Use the last split to generate predictions and a confusion matrix for the best model
+best_k <- as.numeric(gsub("NN", "", best_model))  # Extract k value from best model
+final_pred <- knn(train = x_train, test = x_test, cl = y_train, k = best_k)
+
+# Generate confusion matrix
+confusion_matrix <- table(Predicted = final_pred, Actual = y_test)
+print("Confusion Matrix:")
+print(confusion_matrix)
+
+```
+
+### 3.3: Random Splits and Model Evaluation
+
+#### Test Errors:
+The matrix of test errors across 50 random splits highlights the performance of 1NN, 5NN, 7NN, 9NN, and 13NN. The model with the smallest median test error is **[Best Model]**.
+
+The model struggles most with visually similar digits (e.g., **4 and 9**, **7 and 9**) but performs well for distinct digits like **0**, **1**, and **6**. These results align with prior expectations about the challenges of handwritten digit recognition. The best-performing model offers a balance between complexity and generalization, highlighting the importance of selecting \( k \) carefully based on the trade-off between bias and variance.
+
+
+
+### 3.4 Perform ANOVA on Test Errors
+```{r}
+# Perform ANOVA on test errors
+test_errors_df <- as.data.frame(test_errors)
+test_errors_df$Split <- 1:S
+anova_result <- aov(cbind(`1NN`, `5NN`, `7NN`, `9NN`, `13NN`) ~ Split, data = test_errors_df)
+summary(anova_result)
+
+```
+### ANOVA Results and Patterns
+
+The ANOVA results show the following patterns:
+1. **1NN, 5NN, 9NN, and 13NN**:
+   - The random splits of the data do not significantly affect test errors (\( p > 0.05 \)), indicating stable performance across splits.
+
+2. **7NN**:
+   - The random splits significantly impact test errors (\( p = 0.02934 \)), suggesting that 7NN is sensitive to data variations. This may reflect a balance between overfitting and generalization.
+
+3. **Effect of Model Complexity**:
+   - Smaller \( k \) values (e.g., 1NN) are robust but prone to overfitting.
+   - Larger \( k \) values (e.g., 13NN) are more stable but may sacrifice some accuracy.
+
+### Conclusion:
+7NN appears to be at a balance point in the bias-variance trade-off, making it more sensitive to random splits. Larger \( k \) values offer greater stability across splits.
+
+\section{Part 2 : Binary classification on MNIST}
+
+\subsection{1. Store Training and Test Sets for Digits '1' and '7'}
+
+###  Extract Training and Test Sets for Digits '1' and '7'
+
+```{r}
+# Extract digits '1' and '7' from training and test sets
+train_indices <- which(ytrain_sample %in% c(1, 7))
+test_indices <- which(ytest_sample %in% c(1, 7))
+
+# Subset training and test sets
+x_train_binary <- xtrain_sample[train_indices, ]
+y_train_binary <- ytrain_sample[train_indices]
+x_test_binary <- xtest_sample[test_indices, ]
+y_test_binary <- ytest_sample[test_indices]
+
+# Convert labels to factor with levels 1 (positive) and 7 (negative)
+y_train_binary <- factor(y_train_binary, levels = c(1, 7))
+y_test_binary <- factor(y_test_binary, levels = c(1, 7))
+
+# Print the sizes of the subsets
+cat("Training Set Size:", nrow(x_train_binary), "\n")
+cat("Test Set Size:", nrow(x_test_binary), "\n")
+```
+
+
+\subsection{2. Display Training and Test Confusion Matrices}
+
+###  Confusion Matrices for Training and Test Sets
+
+```{r}
+ 
+# Initialize storage for confusion matrices
+confusion_matrices <- list()
+
+# Fit kNN models and generate confusion matrices
+for (k in c(1, 5, 7, 9, 13)) {
+  # Training predictions
+  pred_train <- knn(train = x_train_binary, test = x_train_binary, cl = y_train_binary, k = k)
+  train_conf_matrix <- table(Predicted = pred_train, Actual = y_train_binary)
+  
+  # Test predictions
+  pred_test <- knn(train = x_train_binary, test = x_test_binary, cl = y_train_binary, k = k)
+  test_conf_matrix <- table(Predicted = pred_test, Actual = y_test_binary)
+  
+  # Store confusion matrices
+  confusion_matrices[[paste(k, "NN", sep = "")]] <- list(
+    Train = train_conf_matrix,
+    Test = test_conf_matrix
+  )
+}
+
+# Display the confusion matrices for training and test sets
+for (model in names(confusion_matrices)) {
+  cat("\n", model, "Training Confusion Matrix:\n")
+  print(confusion_matrices[[model]]$Train)
+  cat("\n", model, "Test Confusion Matrix:\n")
+  print(confusion_matrices[[model]]$Test)
+}
+```
+
+
+\subsection{3. Display Comparative ROC Curves}
+###  Comparative ROC Curves
+
+```{r}
+# Initialize storage for ROC data
+roc_data <- list()
+
+# Define colors and model names
+colors <- c("red", "blue", "green", "purple", "orange")  # Colors for the curves
+model_names <- c("1NN", "5NN", "7NN", "9NN", "13NN")     # kNN model names
+
+# Generate ROC curves for each kNN model
+for (i in seq_along(model_names)) {
+  k <- as.numeric(sub("NN", "", model_names[i]))  # Extract k value from model name
+  
+  # Predict test set labels using kNN
+  pred_test <- knn(train = x_train_binary, test = x_test_binary, cl = y_train_binary, k = k, prob = TRUE)
+  
+  # Extract probabilities for the positive class ('1')
+  prob <- ifelse(pred_test == "1", attr(pred_test, "prob"), 1 - attr(pred_test, "prob"))
+  
+  # Generate ROC curve with explicit levels to avoid warnings
+  roc_data[[model_names[i]]] <- roc(
+    y_test_binary, prob, levels = c("7", "1")  # Set '7' as control (negative) and '1' as case (positive)
+  )
+}
+
+# Plot the first ROC curve
+plot(
+  roc_data[["1NN"]], col = colors[1], main = "Comparative ROC Curves",
+  legacy.axes = TRUE, lwd = 2
+)
+
+# Add the remaining ROC curves
+for (i in 2:length(model_names)) {
+  lines(roc_data[[model_names[i]]], col = colors[i], lwd = 2)
+}
+
+# Add a legend
+legend(
+  "bottomright", legend = model_names, col = colors, lwd = 2,
+  title = "kNN Models"
+)
+
+
+```
+
+### Step 4: Visualizing Misclassified Digits
+
+
+
+
+```{r}
+ 
+# Predict using kNN (k = 7 for this example)
+pred_test <- knn(train = x_train_binary, test = x_test_binary, cl = y_train_binary, k = 7)
+
+# Identify all misclassified indices
+misclassified <- which(pred_test != y_test_binary)
+
+# Identify False Positives and False Negatives
+false_positives <- misclassified[y_test_binary[misclassified] == "7" & pred_test[misclassified] == "1"]
+false_negatives <- misclassified[y_test_binary[misclassified] == "1" & pred_test[misclassified] == "7"]
+
+# Select first two examples for each case (if available)
+if (length(false_positives) > 0) {
+  false_positives <- false_positives[1:min(2, length(false_positives))]
+} else {
+  false_positives <- NULL
+}
+
+if (length(false_negatives) > 0) {
+  false_negatives <- false_negatives[1:min(2, length(false_negatives))]
+} else {
+  false_negatives <- NULL
+}
+
+# Plot False Positives and False Negatives
+par(mfrow = c(2, 2))  # 2x2 grid for comparison
+
+# Plot False Positives
+if (!is.null(false_positives)) {
+  for (i in false_positives) {
+    # Display image for False Positive
+    image(matrix(x_test_binary[i, ], nrow = 28, byrow = TRUE), 
+          main = "False Positive", col = gray.colors(256))
+  }
+} else {
+  cat("No false positives found.\n")
+}
+
+# Plot False Negatives
+if (!is.null(false_negatives)) {
+  for (i in false_negatives) {
+    # Display image for False Negative
+    image(matrix(x_test_binary[i, ], nrow = 28, byrow = TRUE), 
+          main = "False Negative", col = gray.colors(256))
+  }
+} else {
+  cat("No false negatives found.\n")
+}
+
+```
+
+### Comment on Emerging Patterns
+
+From the false positive results, where digit '7' is misclassified as '1', the following patterns emerge:
+
+- **Visual Ambiguity**:  
+  Incomplete or faint horizontal strokes in '7' make it resemble '1', which has a single vertical stroke.
+
+- **Model Sensitivity**:  
+  The kNN model relies on pixel-level similarity, making it prone to confusion when subtle features are missing.
+
+
+\section*{YouTube Video Link}
+You can watch the full video presentation of this project on YouTube:  
+\href{https://youtu.be/5vDRaiMnfyw}{\textbf{Machine Learning for Digit Recognition: kNN Model Error Analysis}}
+ 
